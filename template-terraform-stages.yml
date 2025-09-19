@@ -1,0 +1,66 @@
+name: Template - Terraform Stage
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      environmentDisplayName:
+        required: true
+        type: string
+      backendServiceArm:
+        required: true
+        type: string
+      backendAzureRmResourceGroupName:
+        required: true
+        type: string
+      backendAzureRmStorageAccountName:
+        required: true
+        type: string
+      backendAzureRmContainerName:
+        required: true
+        type: string
+      backendAzureRmKey:
+        required: true
+        type: string
+      workingDirectory:
+        required: true
+        type: string
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ inputs.backendServiceArm }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ inputs.backendAzureRmResourceGroupName }}" \
+            -backend-config="storage_account_name=${{ inputs.backendAzureRmStorageAccountName }}" \
+            -backend-config="container_name=${{ inputs.backendAzureRmContainerName }}" \
+            -backend-config="key=${{ inputs.backendAzureRmKey }}"
+        working-directory: ${{ inputs.workingDirectory }}
+
+      - name: Terraform Plan
+        run: |
+          terraform plan -var "environment=${{ inputs.environment }}" -out=tfplan
+        working-directory: ${{ inputs.workingDirectory }}
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: |
+          terraform apply -auto-approve tfplan
+        working-directory: ${{ inputs.workingDirectory }}
