@@ -1,64 +1,62 @@
-# template-create-terraform-backend.yml
+name: Template - Create Terraform Backend
 
-parameters:
-  environment: terraform_backend_tfstate
-  environmentDisplayName: Terraform Backend
-  backendServiceArm: ''     # Azure DevOps Service Connection name
-  backendAzureRmResourceGroupName: 'resourcegroup-tfstate'
-  backendAzureRmStorageAccountName: 'terraformtfstate'
-  backendAzureRmContainerName: 'tfstate'
-  location: 'westeurope'
-  storageSku: 'Standard_LRS'
-  dependsOn: []
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      environmentDisplayName:
+        required: true
+        type: string
+      backendServiceArm:
+        required: true
+        type: string
+      backendAzureRmResourceGroupName:
+        required: true
+        type: string
+      backendAzureRmStorageAccountName:
+        required: true
+        type: string
+      backendAzureRmContainerName:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
 
-stages:
-- stage: ${{ parameters.environment }}
-  displayName: ${{ parameters.environmentDisplayName }}
-  dependsOn: ${{ parameters.dependsOn }}
-  jobs:
-  - job: Create_TF_Backend
-    displayName: TF Backend to save State
-    pool:
-      vmImage: ubuntu-latest
-
+jobs:
+  create-tf-backend:
+    runs-on: ubuntu-latest
     steps:
-    - task: AzureCLI@2
-      displayName: Create Storage Container for tfstate
-      inputs:
-        azureSubscription: ${{ parameters.backendServiceArm }}
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          set -e
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ inputs.backendServiceArm }}
 
-          echo ">>> Creating resource group..."
+      - name: Create Resource Group
+        run: |
           az group create \
-             -n ${{ parameters.backendAzureRmResourceGroupName }} \
-             -l ${{ parameters.location }} \
-             --only-show-errors --output none
-          echo "Resource group ${{ parameters.backendAzureRmResourceGroupName }} created."
+            -n ${{ inputs.backendAzureRmResourceGroupName }} \
+            -l ${{ inputs.location }}
 
-          echo ">>> Creating storage account..."
+      - name: Create Storage Account
+        run: |
           az storage account create \
-            -g ${{ parameters.backendAzureRmResourceGroupName }} \
-            -l ${{ parameters.location }} \
-            --name ${{ parameters.backendAzureRmStorageAccountName }} \
-            --sku ${{ parameters.storageSku }} \
-            --encryption-services blob \
-            --only-show-errors --output none
-          echo "Storage account ${{ parameters.backendAzureRmStorageAccountName }} created."
+            -g ${{ inputs.backendAzureRmResourceGroupName }} \
+            -l ${{ inputs.location }} \
+            --name ${{ inputs.backendAzureRmStorageAccountName }} \
+            --sku Standard_LRS \
+            --encryption-services blob
 
-          echo ">>> Retrieving storage account key..."
+      - name: Create Storage Container
+        run: |
           ACCOUNT_KEY=$(az storage account keys list \
-            --resource-group ${{ parameters.backendAzureRmResourceGroupName }} \
-            --account-name ${{ parameters.backendAzureRmStorageAccountName }} \
+            --resource-group ${{ inputs.backendAzureRmResourceGroupName }} \
+            --account-name ${{ inputs.backendAzureRmStorageAccountName }} \
             --query [0].value -o tsv)
-          echo "Storage account key retrieved."
 
-          echo ">>> Creating blob container for tfstate..."
           az storage container create \
-             --name ${{ parameters.backendAzureRmContainerName }} \
-             --account-name ${{ parameters.backendAzureRmStorageAccountName }} \
-             --account-key $ACCOUNT_KEY \
-             --only-show-errors --output none
-          echo "Storage container ${{ parameters.backendAzureRmContainerName }} created successfully."
+            --name ${{ inputs.backendAzureRmContainerName }} \
+            --account-name ${{ inputs.backendAzureRmStorageAccountName }} \
+            --account-key $ACCOUNT_KEY
